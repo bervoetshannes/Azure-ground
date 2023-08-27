@@ -14,6 +14,39 @@ import random
 import time
 import datetime
 import json
+import RPi.GPIO as GPIO
+
+GPIO.setmode(GPIO.BOARD)
+
+pin_to_circuit = 7
+
+def rc_time (pin_to_circuit):
+    count = 0
+  
+    #Output on the pin for 
+    GPIO.setup(pin_to_circuit, GPIO.OUT)
+    GPIO.output(pin_to_circuit, GPIO.LOW)
+    time.sleep(20)
+
+    #Change the pin back to input
+    GPIO.setup(pin_to_circuit, GPIO.IN)
+  
+    #Count until the pin goes high
+    while (GPIO.input(pin_to_circuit) == GPIO.LOW):
+        count += 1
+
+    return count
+
+#Catch when script is interrupted, cleanup correctly
+try:
+    # Main loop
+    while True:
+        time.sleep(10)
+        print(rc_time(pin_to_circuit))
+except KeyboardInterrupt:
+    pass
+finally:
+    GPIO.cleanup()
 
 async def main():
     # get connection string from config.py (not stored in git)
@@ -25,11 +58,13 @@ async def main():
     # Connect the client.
     await device_client.connect()
 
-    async def send_message(temperature):
+    async def send_message(temperature, light):
         print("sending message with temperature " + str(temperature))
+        print("sending message with temperature " + str(light))
 
         body = {
             "time": str(datetime.datetime.utcnow()),
+            "light": light,
             "temperature": temperature,
             "deviceId": "myDevice"
         }
@@ -46,6 +81,10 @@ async def main():
             msg.custom_properties["alert"] = "too hot"
             print("we sent an alert")
 
+        if light > 10:
+            msg.custom_properties["alert"] = "too dark"
+            print("sent an alarm")
+
         # json format
         msg.content_encoding = "UTF-8"
         msg.content_type = "application/json"
@@ -56,9 +95,11 @@ async def main():
 
     # send `messages_to_send` messages in parallel
     while True:
+        light = rc_time()
         temperature = 20 + random.random() * 10
         await send_message(temperature)
-        time.sleep(1)
+        await send_message(light)
+        time.sleep(10)
 
 
 if __name__ == "__main__":
